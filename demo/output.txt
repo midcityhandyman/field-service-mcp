@@ -1,0 +1,76 @@
+field-service-mcp demo (in-process mock vendor API, invented data, fixed dates)
+Request from the office: "Taylor Mockwell called. The water heater still is not fixed.
+Get someone back out there Tuesday morning and send a quote for a new heating element."
+
+== Step 1: What can this server do? ==
+    [read ] server_info: Describe this server: which adapter is active, whether writes are enabled, and working hours.
+    [read ] list_customers: List customers, optionally filtered by a free text search.
+    [read ] get_customer: Fetch one customer by id.
+    [read ] list_jobs: List jobs, newest first. Filter by customer and by status.
+    [read ] get_job: Fetch one job by id.
+    [read ] list_visits: List visits, earliest first. Filter by job, technician and an inclusive date range.
+    [read ] list_quotes: List quotes, newest first. Filter by customer and by status.
+    [read ] get_quote: Fetch one quote with its line items and total.
+    [read ] list_technicians: List the technicians who can be assigned to visits.
+    [read ] get_schedule: Show who is booked where: visits grouped by technician and day, with job and customer names.
+    [read ] find_open_slots: Find free windows inside working hours that can fit a visit of the given length.
+    [WRITE] create_customer: Create a customer. Search with list_customers first to avoid duplicates.
+    [WRITE] create_job: Create a job (a piece of work) for an existing customer. It starts in status open.
+    [WRITE] create_visit: Book a technician on a job for a time window. Fails if the technician is already booked then.
+    [WRITE] create_quote: Create a draft quote for a customer. The total is computed by the field service system.
+  > server_info()
+    adapter=mock read_only=False hours=08:00 to 17:00
+
+== Step 2: Find the customer and the job ==
+  > list_customers(search="mockwell")
+    CL-1004  Taylor Mockwell  555-0104  400 Demo Court
+  > list_jobs(customer_id="CL-1004")
+    WO-2004  Water heater not heating  status=in_progress  priority=high
+  > list_visits(job_id="WO-2004")
+    AP-3002  2030-01-07 13:00 to 15:00  tech=T-01  booked
+
+== Step 3: Look at Tuesday ==
+  > get_schedule(date_from="2030-01-08")
+    Riley Demo (T-03), 420 minutes booked
+      08:00 to 10:00  Patch drywall in hallway  for Morgan Fixture
+      11:00 to 16:00  Unit 2B turnover punch list  for Sample Property Group
+  > find_open_slots(day="2030-01-08", duration_minutes=120, technician_id="T-01")
+    open: Sam Example 08:00 to 17:00 (540 min)
+
+== Step 4: A careless booking is refused by the vendor and explained to the agent ==
+  > create_visit(job_id="WO-2004", technician_id="T-01", start="2030-01-07T14:00:00", end="2030-01-07T16:00:00")
+    TOOL ERROR: Error executing tool create_visit: Tech T-01 is already booked 2030-01-07T13:00:00 to 2030-01-07T15:00:00 (appointment AP-3002). Look up the schedule or the current record, then pick different values.
+  > create_visit(job_id="WO-2004", technician_id="T-01", start="2030-01-08T11:00:00", end="2030-01-08T09:00:00")
+    TOOL ERROR: Error executing tool create_visit: Invalid arguments: input: Value error, end must be after start. Fix the arguments and call the tool again.
+
+== Step 5: Book the return visit in an open slot ==
+  > create_visit(job_id="WO-2004", technician_id="T-01", start="2030-01-08T09:00:00", end="2030-01-08T11:00:00", notes="Return visit. Bring a replacement heating element.")
+    booked AP-3008: 2030-01-08 09:00 to 11:00 tech=T-01 status=booked
+
+== Step 6: Create the quote ==
+  > create_quote(customer_id="CL-1004", job_id="WO-2004", line_items=[{"description": "Heating element, 4500W", "quantity": 1, "unit_price": 38.75}, {"description": "Thermostat", "quantity": 1, "unit_price": 24.5}, {"description": "Labor", "quantity": 1.5, "unit_price": 95}])
+       1 x Heating element, 4500W      $38.75
+       1 x Thermostat                  $24.50
+     1.5 x Labor                       $95.00
+    ES-4004  status=draft  total=$205.75
+
+== Step 7: Confirm what changed by reading it back ==
+  > get_schedule(date_from="2030-01-08", technician_id="T-01")
+    Sam Example: 09:00 to 11:00  Water heater not heating  for Taylor Mockwell
+  > list_quotes(customer_id="CL-1004")
+    quotes on file for Taylor Mockwell: ES-4004 draft $205.75
+
+== Step 8: A new caller: create the customer and a job ==
+  > create_customer(name="Robin Fabricated", phone="555-0142", email="robin.fabricated@example.com", address={"line1": "700 Invented Way", "city": "Sampletown", "region": "ZZ", "postal_code": "00007"})
+    created CL-1007  Robin Fabricated
+  > create_job(customer_id="CL-1007", title="Replace storm door", description="Front entry. Customer has the door on site.")
+    created WO-2009  Replace storm door  status=open
+  > get_job(job_id="WO-9999")
+    TOOL ERROR: Error executing tool get_job: Job WO-9999 does not exist. Check the id with the matching list tool before retrying.
+
+== Step 9: Same data, read-only mode (FSM_READ_ONLY=true) ==
+    11 tools offered, create tools offered: none
+  > list_jobs(status="open")
+    open jobs: WO-2009 Replace storm door, WO-2008 Quote request: bathroom fan
+
+Demo finished. Nothing left this process.
