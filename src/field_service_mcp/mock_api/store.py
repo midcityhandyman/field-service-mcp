@@ -117,6 +117,18 @@ class MockStore:
                 return row
         return None
 
+    def book_appointment(self, work_order_id: str, tech_id: str, starts_at: datetime, ends_at: datetime,
+                         notes: str = "") -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Check for a clash and insert under one lock, so two requests cannot both win a slot.
+
+        Returns ``(appointment, None)`` when booked, or ``(None, clashing_appointment)``.
+        """
+        with self._lock:
+            clash = self.find_overlap(tech_id, starts_at, ends_at)
+            if clash is not None:
+                return None, clash
+            return self.add_appointment(work_order_id, tech_id, starts_at, ends_at, notes), None
+
     def add_appointment(self, work_order_id: str, tech_id: str, starts_at: datetime, ends_at: datetime,
                         notes: str = "", state: str = "BOOKED") -> dict[str, Any]:
         with self._lock:

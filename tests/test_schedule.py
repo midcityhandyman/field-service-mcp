@@ -88,3 +88,9 @@ async def test_open_slots_shrink_with_shorter_working_hours(adapter):
 async def test_open_slots_validate_duration(adapter):
     with pytest.raises(InvalidRequestError):
         await find_open_slots(adapter, DAY, 5, time(8), time(17))
+
+
+async def test_open_slots_do_not_offer_time_a_completed_visit_used(adapter):
+    # The seed has a completed visit for T-01 on 2030-01-02, 09:00 to 11:00.
+    result = await find_open_slots(adapter, date(2030, 1, 2), 60, time(8), time(17), technician_id="T-01")
+    assert [(slot.start.hour, slot.end.hour) for slot in result.slots] == [(8, 9), (11, 17)]

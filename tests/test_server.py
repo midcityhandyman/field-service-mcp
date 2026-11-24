@@ -64,6 +64,12 @@ async def test_list_visits_by_inclusive_date_range(client):
     assert visits[0]["start"] == "2030-01-08T08:00:00"
 
 
+async def test_list_visits_rejects_a_backwards_date_range(client):
+    result = await client.call_tool("list_visits", {"date_from": "2030-01-09", "date_to": "2030-01-08"})
+    assert result.is_error is True
+    assert "date_to must be on or after date_from" in text_of(result)
+
+
 async def test_schedule_and_open_slots(client):
     schedule = (await client.call_tool("get_schedule", {"date_from": "2030-01-07"})).structured_content
     assert [(day["technician_name"], day["booked_minutes"]) for day in schedule["days"]] == [

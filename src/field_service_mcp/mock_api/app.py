@@ -200,12 +200,14 @@ def create_app(store: MockStore | None = None, api_key: str = MOCK_API_KEY) -> F
                            f"Work order {order['id']} is {order['state']} and cannot take new appointments.")
         starts_at = body.startsAt.replace(tzinfo=None)
         ends_at = body.endsAt.replace(tzinfo=None)
-        clash = store.find_overlap(body.techId, starts_at, ends_at)
+        # Check and insert in one step: these handlers run on a thread pool, so a
+        # separate check followed by an insert could let two requests take one slot.
+        booked, clash = store.book_appointment(body.workOrderId, body.techId, starts_at, ends_at, body.notes)
         if clash is not None:
             raise ApiError(409, "tech_double_booked",
                            f"Tech {body.techId} is already booked {clash['startsAt']} to {clash['endsAt']} "
                            f"(appointment {clash['id']}).")
-        return store.add_appointment(body.workOrderId, body.techId, starts_at, ends_at, body.notes)
+        return booked
 
     # -- estimates ----------------------------------------------------------- #
 

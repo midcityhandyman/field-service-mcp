@@ -92,6 +92,35 @@ def test_double_booking_is_refused(api):
     assert api.post("/api/v1/appointments", json=body).status_code == 201
 
 
+def test_concurrent_bookings_for_one_slot_have_exactly_one_winner():
+    """The check and the insert are one step, even when the check is slow."""
+    import threading
+    import time as clock
+    from datetime import datetime
+
+    store = MockStore()
+    real_find = store.find_overlap
+
+    def slow_find(*args):
+        clash = real_find(*args)
+        clock.sleep(0.05)  # widen the window a separate check then insert would leave open
+        return clash
+
+    store.find_overlap = slow_find
+    start, end = datetime(2030, 1, 10, 9), datetime(2030, 1, 10, 10)
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(store.book_appointment("WO-2005", "T-02", start, end)))
+        for _ in range(6)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sum(1 for booked, _ in results if booked is not None) == 1
+    assert sum(1 for _, clash in results if clash is not None) == 5
+
+
 def test_booking_moves_an_open_work_order_to_scheduled(api):
     order = api.post("/api/v1/workorders", json={"clientId": "CL-1003", "summary": "Hang shelf"}).json()
     body = {"workOrderId": order["id"], "techId": "T-02",

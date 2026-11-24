@@ -143,7 +143,8 @@ async def find_open_slots(adapter: FieldServiceAdapter, day: date, duration_minu
         busy = [
             (visit.start, visit.end)
             for visit in visits
-            if visit.technician_id == tech.id and visit.status == VisitStatus.BOOKED
+            # A completed visit still used that time. Only a cancelled one frees it.
+            if visit.technician_id == tech.id and visit.status != VisitStatus.CANCELLED
         ]
         for start, end in free_windows(busy, window_start, window_end, duration_minutes):
             slots.append(OpenSlot(technician_id=tech.id, technician_name=tech.name, start=start, end=end,

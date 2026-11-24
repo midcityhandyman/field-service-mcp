@@ -23,7 +23,7 @@ from . import __version__
 from .adapters import FieldServiceAdapter, create_adapter
 from .adapters.base import MAX_PAGE_SIZE
 from .config import ConfigError, Settings
-from .errors import AdapterError
+from .errors import AdapterError, InvalidRequestError
 from .models import (
     Address,
     Customer,
@@ -162,6 +162,8 @@ def build_server(adapter: FieldServiceAdapter, settings: Settings | None = None)
     ) -> Page[Visit]:
         """List visits, earliest first. Filter by job, technician and an inclusive date range."""
         with tool_errors():
+            if date_from and date_to and date_to < date_from:
+                raise InvalidRequestError("date_to must be on or after date_from.")
             start, end = _day_bounds(date_from, date_to)
             return await adapter.list_visits(job_id=job_id, technician_id=technician_id, start=start, end=end,
                                              limit=limit, offset=offset)
